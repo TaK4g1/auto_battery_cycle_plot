@@ -1,0 +1,12 @@
+.venv/
+.idea/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.png
+*.pdf
+*.svg
+*.xlsx
+*.xlsm
+*.ccs
