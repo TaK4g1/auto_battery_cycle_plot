@@ -140,8 +140,30 @@ def infer_column_mapping(headers: list[str]) -> dict[str, str]:
     return {canonical: original for canonical, (original, _) in matches.items()}
 
 
-def detect_header_row(sheet_name: str, preview_df: pd.DataFrame) -> HeaderDetectionResult | None:
-    best_result: HeaderDetectionResult | None = None
+def score_header_mapping(mapping: dict[str, str]) -> int:
+    score = 0
+    if "voltage" in mapping:
+        score += 8
+    if "specific_capacity" in mapping:
+        score += 8
+    if "cycle" in mapping:
+        score += 5
+    if "mode" in mapping:
+        score += 5
+    if "record" in mapping:
+        score += 2
+    if "step" in mapping:
+        score += 2
+    return score
+
+
+def detect_header_rows(
+    sheet_name: str,
+    preview_df: pd.DataFrame,
+    required_fields: set[str] | None = None,
+    minimum_score: int = 16,
+) -> list[HeaderDetectionResult]:
+    results: list[HeaderDetectionResult] = []
 
     for row_index in range(len(preview_df.index)):
         row_values = preview_df.iloc[row_index].tolist()
@@ -151,29 +173,28 @@ def detect_header_row(sheet_name: str, preview_df: pd.DataFrame) -> HeaderDetect
             continue
 
         mapping = infer_column_mapping(headers)
-        score = 0
-        if "voltage" in mapping:
-            score += 8
-        if "specific_capacity" in mapping:
-            score += 8
-        if "cycle" in mapping:
-            score += 5
-        if "mode" in mapping:
-            score += 5
-        if "record" in mapping:
-            score += 2
-        if "step" in mapping:
-            score += 2
-
-        if score < 16:
+        if required_fields and not required_fields.issubset(mapping):
+            continue
+        score = score_header_mapping(mapping)
+        if score < minimum_score:
             continue
 
-        candidate = HeaderDetectionResult(
-            sheet_name=sheet_name,
-            header_row=row_index,
-            mapping=mapping,
-            score=score,
+        results.append(
+            HeaderDetectionResult(
+                sheet_name=sheet_name,
+                header_row=row_index,
+                mapping=mapping,
+                score=score,
+            )
         )
+
+    return results
+
+
+def detect_header_row(sheet_name: str, preview_df: pd.DataFrame) -> HeaderDetectionResult | None:
+    best_result: HeaderDetectionResult | None = None
+
+    for candidate in detect_header_rows(sheet_name, preview_df):
         if best_result is None or candidate.score > best_result.score:
             best_result = candidate
 

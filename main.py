@@ -2,10 +2,11 @@
 
 import argparse
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from config import AppConfig
-from data_loader import DataLoaderError, generate_demo_dataset, load_battery_dataset
+from data_loader import DataLoaderError, generate_demo_dataset, load_battery_datasets
 from plotter import PlottingError, plot_voltage_specific_capacity
 from utils import (
     UserInputError,
@@ -56,6 +57,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--y-lim", nargs=2, metavar=("MIN", "MAX"), help="Y 轴范围")
     parser.add_argument("--mode-map", nargs="*", help="工作模式映射补充，例如 恒流充电=charge 静置=rest")
     parser.add_argument("--interactive", action="store_true", help="强制进入交互式输入")
+    parser.add_argument("--gui", action="store_true", help="启动图形界面")
     parser.add_argument("--demo", action="store_true", help="使用内置示例数据生成演示图")
     parser.add_argument("--show-legend", dest="show_legend", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--grid", dest="grid", action=argparse.BooleanOptionalAction, default=None)
@@ -314,33 +316,69 @@ def configure_interactively(config: AppConfig, prompt_all: bool, use_demo: bool)
     return config
 
 
-def run(config: AppConfig, use_demo: bool) -> Path:
+def build_dataset_output_path(config: AppConfig, output_stem: str, total_count: int) -> Path:
+    if config.output_path is None:
+        raise UserInputError("缺少输出路径。")
+
+    if total_count <= 1:
+        return config.output_path
+
+    suffix = f".{config.normalized_output_format()}"
+    return config.output_path.parent / f"{output_stem}{suffix}"
+
+
+def run(config: AppConfig, use_demo: bool) -> list[Path]:
     if use_demo:
         dataset = generate_demo_dataset()
-        data = dataset.data
         print("已加载内置示例数据。")
-    else:
-        if config.input_path is None:
-            raise UserInputError("缺少输入文件路径。")
-        dataset = load_battery_dataset(
-            file_path=config.input_path,
-            sheet_name=config.sheet_name,
-            cycles=config.cycles,
-            mode_overrides=config.mode_overrides,
-            auto_sort=config.auto_sort,
-            absolute_specific_capacity=config.absolute_specific_capacity,
-        )
-        data = dataset.data
-        print(f"已识别 sheet: {dataset.sheet_name}")
-        print(f"已识别表头行: 第 {dataset.header_row + 1} 行")
+        saved_path = plot_voltage_specific_capacity(dataset.data, config)
+        return [saved_path]
 
-    saved_path = plot_voltage_specific_capacity(data, config)
-    return saved_path
+    if config.input_path is None:
+        raise UserInputError("缺少输入文件路径。")
+
+    dataset_items = load_battery_datasets(
+        file_path=config.input_path,
+        sheet_name=config.sheet_name,
+        cycles=config.cycles,
+        mode_overrides=config.mode_overrides,
+        auto_sort=config.auto_sort,
+        absolute_specific_capacity=config.absolute_specific_capacity,
+    )
+
+    saved_paths: list[Path] = []
+    total_count = len(dataset_items)
+    if total_count > 1:
+        print(f"检测到 {total_count} 个可绘制子表格，开始依次输出。")
+
+    for index, item in enumerate(dataset_items, start=1):
+        dataset = item.dataset
+        dataset_output_path = build_dataset_output_path(config, item.output_stem, total_count)
+        dataset_config = replace(config, output_path=dataset_output_path)
+
+        if total_count > 1:
+            print(f"\n[{index}/{total_count}] 处理 sheet: {dataset.sheet_name}")
+            print(f"输出文件名: {dataset_output_path.name}")
+        else:
+            print(f"已识别 sheet: {dataset.sheet_name}")
+        print(f"已识别表头行: 第 {dataset.header_row + 1} 行")
+        if item.source_path:
+            print(f"匹配源子表: {item.source_path}")
+
+        saved_paths.append(plot_voltage_specific_capacity(dataset.data, dataset_config))
+
+    return saved_paths
 
 
 def main() -> int:
     parser = build_argument_parser()
     args = parser.parse_args()
+
+    if args.gui:
+        from gui import launch_gui
+
+        launch_gui()
+        return 0
 
     try:
         config = apply_cli_arguments(args)
@@ -353,8 +391,13 @@ def main() -> int:
             config.output_path = build_output_path("battery_curve.png", config.output_format)
             sync_output_settings(config)
 
-        saved_path = run(config, use_demo=args.demo)
-        print(f"图片已保存到 {saved_path}")
+        saved_paths = run(config, use_demo=args.demo)
+        if len(saved_paths) == 1:
+            print(f"图片已保存到 {saved_paths[0]}")
+        else:
+            print("图片已全部保存到：")
+            for saved_path in saved_paths:
+                print(f"- {saved_path}")
         return 0
     except (UserInputError, DataLoaderError, PlottingError, ValueError) as exc:
         print(f"错误: {exc}")

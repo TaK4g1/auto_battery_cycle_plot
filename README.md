@@ -10,6 +10,28 @@ python main.py
 
 运行后，程序会依次询问输入文件路径、sheet 名、输出路径、循环范围以及关键绘图参数；也支持命令行参数方式进行批处理。
 
+现在也支持图形界面（GUI）运行：
+
+```bash
+python gui.py
+```
+
+或：
+
+```bash
+python main.py --gui
+```
+
+---
+
+## 最近更新
+
+- 新增桌面 GUI（`gui.py` / `python main.py --gui`）；
+- 支持一个 Excel 内含多个子表格时自动逐个绘图；
+- 支持同一个 sheet 内多个块状子表格自动拆分；
+- 支持根据信息表中的原始子表路径/文件名自动命名输出；
+- GUI 新增常用 `colormap` 下拉选择与色卡预览。
+
 ---
 
 ## 1. 项目功能介绍
@@ -21,6 +43,8 @@ python main.py
 - 优先支持 `.xlsx` / `.xlsm` 文件；
 - 自动识别最可能包含逐点曲线数据的 sheet；
 - 自动识别逐点数据表头所在行，避免误读前面的循环汇总区；
+- 支持一个 Excel 内存在多个子表格时依次读取并分别绘图（包括多个 sheet，或同一 sheet 内多个块状子表格）；
+- 若 Excel 的信息表中包含原始子表路径/文件名，导出图片会优先按原子表名字自动命名；
 - 自动兼容中英文列名，优先识别：
   - `循环序号`
   - `工作模式`
@@ -33,6 +57,7 @@ python main.py
 - 支持 `png` / `svg` / `pdf` 高质量导出；
 - 支持中文标题、中文字体、论文风格主题、透明背景、colormap、自定义线宽/线型/坐标范围；
 - 提供内置 demo 数据，方便快速试跑；
+- 提供桌面 GUI，可通过按钮选择文件、设置参数并直接执行绘图；
 - 对 `.ccs` 原始文件做了清晰提示：当前不直接解析，建议先从设备软件导出为 `.xlsx` 再处理。
 
 ---
@@ -53,6 +78,12 @@ pip install -r requirements.txt
 
 ```powershell
 python main.py
+```
+
+如需图形界面：
+
+```powershell
+python gui.py
 ```
 
 ---
@@ -86,7 +117,8 @@ python main.py
 2. 真正的逐点数据表头可能出现在靠后几行；
 3. 表头可能包含中文列名；
 4. 文件可能包含多个 sheet；
-5. 不同设备导出的工作模式文字可能不完全一致。
+5. 同一个 sheet 中也可能包含多个前后排列的块状子表格；
+6. 不同设备导出的工作模式文字可能不完全一致。
 
 ### 优先识别的关键列
 
@@ -136,8 +168,72 @@ python main.py
 - 输入文件不存在时会重新提示，而不是崩溃；
 - 输出目录不存在时会自动创建；
 - 输出文件缺少扩展名时，会根据输出格式自动补全；
+- 如果自动识别到多个子表格，会在你给定的输出目录下按各子表名字分别保存图片；
 - 直接回车即可接受默认值；
 - 非法输入会给出提示并允许重新输入。
+
+---
+
+## 5.1 图形界面（GUI）运行方法
+
+如果你不想输入命令参数，也不想逐行回答终端问题，可以直接使用 GUI：
+
+```powershell
+python gui.py
+```
+
+或者：
+
+```powershell
+python main.py --gui
+```
+
+GUI 中可直接完成：
+
+- 选择输入 Excel；
+- 选择输出目录；
+- 设置基础文件名、输出格式、标题、循环编号；
+- 通过下拉框选择常用 colormap，并查看色卡预览；
+- 勾选是否显示图例、网格、按循环着色等选项；
+- 设置 DPI、图尺寸、坐标范围、字体列表、模式映射等高级参数；
+- 查看运行日志；
+- 一键开始绘图。
+
+对于包含多个子表格的 Excel，GUI 版也会按现有规则自动逐个输出图片。
+
+---
+
+## 5.2 GUI 中几个容易混淆的参数
+
+### colormap 是什么？
+
+当你开启“按循环着色”时，不同循环会从一个颜色方案中自动取色。
+
+常见例子：
+
+- `tab10`：适合离散循环，颜色区分明显；
+- `viridis`：渐变自然，科研绘图常用；
+- `plasma`：对比更强；
+- `coolwarm`：冷暖渐变明显。
+
+GUI 中可以直接下拉选择，也能看到色卡预览。
+
+### 统一颜色是什么？
+
+如果你**不按循环着色**，那么所有曲线都会优先使用“统一颜色”。
+
+例如填入：
+
+```text
+#1f77b4
+```
+
+则所有线条会统一用这一种颜色。
+
+### 两者如何配合？
+
+- 开启“按循环着色” → 主要由 `colormap` 控制；
+- 关闭“按循环着色” → 主要由“统一颜色”控制。
 
 ---
 
@@ -193,6 +289,20 @@ python main.py --input data.xlsx --output figure.png --no-show-legend --no-grid
 python main.py --demo --output demo_curve.png
 ```
 
+### 示例 7：一个 Excel 中有多个子表格
+
+```powershell
+python main.py --input "D:\data\merged_export.xlsx" --output "D:\figures\result.png"
+```
+
+说明：
+
+- 如果文件中只识别到一个可绘制子表格，仍按你指定的 `result.png` 输出；
+- 如果识别到多个子表格，程序会忽略 `result` 这个文件名部分，仅使用其所在目录 `D:\figures\`；
+- 每张图会按原子表名字自动命名，例如：
+  - `cyclingtest_2026.3.14-Gr_only_NMC0.788mg-CritCRate_20260314155506_DefaultGroup_37_1.png`
+  - `cyclingtest_2026.3.14-Gr_only_NMC0.799mg-CritCRate_20260314160000_DefaultGroup_37_2.png`
+
 ---
 
 ## 7. 运行时会提示输入哪些内容
@@ -230,6 +340,12 @@ python main.py --demo --output demo_curve.png
 - 是否透明背景
 - 工作模式映射补充规则
 
+补充说明：
+
+- 若同一个 Excel 中有多个可绘制子表格，程序会逐个输出；
+- 若你提供的信息表里含有类似 `路径` / `文件名` 的原始子表信息，会优先据此命名导出图片；
+- 若没有这些信息，则会回退为 `sheet名_part1`、`sheet名_part2` 这类命名。
+
 ---
 
 ## 8. 如何输入数据文件路径与输出图片路径
@@ -254,6 +370,10 @@ D:\battery_data\sample.xlsx
 D:\battery_figures\sample_curve.png
 ```
 
+如果当前 Excel 中实际包含多个子表格，也可以仍然这样输入。
+
+程序会把 `D:\battery_figures` 当作输出目录，再按识别到的子表名字自动生成多个文件名。
+
 如果你只输入：
 
 ```text
@@ -264,6 +384,29 @@ D:\battery_figures\sample_curve
 
 ```text
 D:\battery_figures\sample_curve.png
+```
+
+### 多子表格时的输出命名规则
+
+如果 Excel 中存在多个可绘制子表格，程序会优先读取信息表中的原始路径/文件名，并按下面规则命名：
+
+原始子表路径例如：
+
+```text
+E:/HKUST-GZ/cyclingtest/2026.3.14-Gr_only_NMC0.788mg-CritCRate_20260314155506_DefaultGroup_37_1.ccs
+```
+
+则导出文件名会优先变成：
+
+```text
+cyclingtest_2026.3.14-Gr_only_NMC0.788mg-CritCRate_20260314155506_DefaultGroup_37_1.png
+```
+
+如果信息表中没有这些信息，则会回退为：
+
+```text
+sheet名_part1.png
+sheet名_part2.png
 ```
 
 ---
@@ -436,14 +579,16 @@ D:\figures\curve.png
 ## 14. 项目结构
 
 ```text
-main.py          # 程序入口，支持交互式 + 命令行
+main.py          # 程序入口，支持交互式 + 命令行 + --gui
+gui.py           # tkinter 图形界面
 config.py        # 默认配置
 utils.py         # 路径处理、循环解析、交互辅助
 parser.py        # 表头识别、字段映射、模式分类、数据清洗
-data_loader.py   # Excel 读取、sheet 自动识别、demo 数据
+data_loader.py   # Excel 读取、多 sheet / 多块子表格识别、命名匹配
 plotter.py       # matplotlib 绘图与导出
 requirements.txt # 依赖列表
 README.md        # 使用说明
+USER_MANUAL.md   # 面向新手的详细手册
 ```
 
 ---
