@@ -5,7 +5,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from config import AppConfig
+from config import AppConfig, DEFAULT_PLOT_BACKEND
 from data_loader import DataLoaderError, generate_demo_dataset, load_battery_datasets
 from plotter import PlottingError, plot_voltage_specific_capacity
 from utils import (
@@ -34,6 +34,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input", help="输入 Excel 文件路径（.xlsx / .xlsm）")
     parser.add_argument("--sheet", help="要读取的 sheet 名")
     parser.add_argument("--output", help="输出图片路径")
+    parser.add_argument(
+        "--backend",
+        choices=["matplotlib", "origin"],
+        help="绘图后端：matplotlib / origin",
+    )
     parser.add_argument("--format", dest="output_format", help="输出格式：png / svg / pdf")
     parser.add_argument("--cycles", nargs="*", help="循环编号，例如 1 2 3 或 1-5")
     parser.add_argument("--dpi", type=int, help="导出 DPI")
@@ -59,6 +64,13 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--interactive", action="store_true", help="强制进入交互式输入")
     parser.add_argument("--gui", action="store_true", help="启动图形界面")
     parser.add_argument("--demo", action="store_true", help="使用内置示例数据生成演示图")
+    parser.add_argument(
+        "--save-origin-project",
+        dest="save_origin_project",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="使用 Origin 后端时是否同时保存可编辑的 .opju 工程文件",
+    )
     parser.add_argument("--show-legend", dest="show_legend", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--grid", dest="grid", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--color-by-cycle", dest="color_by_cycle", action=argparse.BooleanOptionalAction, default=None)
@@ -83,11 +95,24 @@ def sync_output_settings(config: AppConfig) -> None:
         config.output_path = config.output_path.with_suffix(target_suffix)
 
 
+def parse_plot_backend(value: str | None, default: str = DEFAULT_PLOT_BACKEND) -> str:
+    text = (value or "").strip().lower()
+    if not text:
+        return default
+    if text not in {"matplotlib", "origin"}:
+        raise UserInputError("绘图后端仅支持 matplotlib / origin。")
+    return text
+
+
 def apply_cli_arguments(args: argparse.Namespace) -> AppConfig:
     config = AppConfig()
 
     if args.input:
         config.input_path = validate_input_file(args.input)
+    if args.backend:
+        config.plot_backend = parse_plot_backend(args.backend, config.plot_backend)
+    if args.save_origin_project is not None:
+        config.save_origin_project = args.save_origin_project
     if args.sheet is not None:
         config.sheet_name = args.sheet.strip() or None
     if args.output_format:
@@ -225,6 +250,10 @@ def configure_interactively(config: AppConfig, prompt_all: bool, use_demo: bool)
         lambda text: parse_output_format(text, config.output_format),
     )
     sync_output_settings(config)
+    config.plot_backend = prompt_until_valid(
+        f"请输入绘图后端（matplotlib/origin） [{config.plot_backend}]: ",
+        lambda text: parse_plot_backend(text, config.plot_backend),
+    )
 
     config.dpi = prompt_until_valid(
         f"请输入输出 DPI [{config.dpi}]: ",
@@ -308,6 +337,11 @@ def configure_interactively(config: AppConfig, prompt_all: bool, use_demo: bool)
         f"是否使用透明背景（y/n） [{'y' if config.transparent_background else 'n'}]: ",
         lambda text: parse_bool_text(text, config.transparent_background),
     )
+    if config.plot_backend == "origin":
+        config.save_origin_project = prompt_until_valid(
+            f"是否同时保存可编辑Origin工程（y/n） [{'y' if config.save_origin_project else 'n'}]: ",
+            lambda text: parse_bool_text(text, config.save_origin_project),
+        )
     config.mode_overrides = prompt_until_valid(
         "请输入工作模式映射补充（例如 恒流充电=charge,静置=rest；直接回车跳过）: ",
         parse_mode_overrides,
@@ -327,11 +361,23 @@ def build_dataset_output_path(config: AppConfig, output_stem: str, total_count: 
     return config.output_path.parent / f"{output_stem}{suffix}"
 
 
+def plot_dataset(data, config: AppConfig) -> Path:
+    backend = (config.plot_backend or DEFAULT_PLOT_BACKEND).lower()
+    if backend == "matplotlib":
+        return plot_voltage_specific_capacity(data, config)
+    if backend == "origin":
+        from origin_plotter import plot_voltage_specific_capacity_origin
+
+        return plot_voltage_specific_capacity_origin(data, config)
+    raise PlottingError(f"不支持的绘图后端: {config.plot_backend}")
+
+
 def run(config: AppConfig, use_demo: bool) -> list[Path]:
     if use_demo:
         dataset = generate_demo_dataset()
         print("已加载内置示例数据。")
-        saved_path = plot_voltage_specific_capacity(dataset.data, config)
+        print(f"当前绘图后端: {config.plot_backend}")
+        saved_path = plot_dataset(dataset.data, config)
         return [saved_path]
 
     if config.input_path is None:
@@ -348,6 +394,7 @@ def run(config: AppConfig, use_demo: bool) -> list[Path]:
 
     saved_paths: list[Path] = []
     total_count = len(dataset_items)
+    print(f"当前绘图后端: {config.plot_backend}")
     if total_count > 1:
         print(f"检测到 {total_count} 个可绘制子表格，开始依次输出。")
 
@@ -365,7 +412,7 @@ def run(config: AppConfig, use_demo: bool) -> list[Path]:
         if item.source_path:
             print(f"匹配源子表: {item.source_path}")
 
-        saved_paths.append(plot_voltage_specific_capacity(dataset.data, dataset_config))
+        saved_paths.append(plot_dataset(dataset.data, dataset_config))
 
     return saved_paths
 

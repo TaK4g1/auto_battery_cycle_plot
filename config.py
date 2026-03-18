@@ -6,7 +6,8 @@ from pathlib import Path
 SUPPORTED_EXCEL_SUFFIXES = {".xlsx", ".xlsm"}
 SCAN_PREVIEW_ROWS = 80
 DEFAULT_OUTPUT_FORMAT = "png"
-DEFAULT_COLORMAP = "tab10"
+DEFAULT_PLOT_BACKEND = "matplotlib"
+DEFAULT_COLORMAP = "viridis"
 DEFAULT_THEME = "paper"
 DEFAULT_FONT_CANDIDATES = [
     "Microsoft YaHei",
@@ -54,6 +55,8 @@ class AppConfig:
     input_path: Path | None = None
     sheet_name: str | None = None
     output_path: Path | None = None
+    plot_backend: str = DEFAULT_PLOT_BACKEND
+    save_origin_project: bool = True
     output_format: str = DEFAULT_OUTPUT_FORMAT
     dpi: int = 300
     cycles: list[int] | None = None
@@ -66,11 +69,11 @@ class AppConfig:
     label_fontsize: int = 13
     tick_fontsize: int = 11
     font_family: list[str] = field(default_factory=lambda: list(DEFAULT_FONT_CANDIDATES))
-    line_width: float = 1.8
+    line_width: float = 2.2
     line_style_charge: str = "-"
     line_style_discharge: str = "--"
     line_color: str = "#1f77b4"
-    grid: bool = True
+    grid: bool = False
     grid_style: str = "--"
     figure_width: float = 8.0
     figure_height: float = 6.0

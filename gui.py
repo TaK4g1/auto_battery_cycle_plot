@@ -10,7 +10,7 @@ from typing import Callable
 
 from matplotlib import colormaps
 
-from config import AppConfig, DEFAULT_OUTPUT_FORMAT, DEFAULT_THEME
+from config import AppConfig, DEFAULT_COLORMAP, DEFAULT_OUTPUT_FORMAT, DEFAULT_PLOT_BACKEND, DEFAULT_THEME
 from data_loader import DataLoaderError
 from main import run, sync_output_settings
 from plotter import PlottingError
@@ -82,15 +82,16 @@ class BatteryPlotterGUI:
         self.cycles_var = tk.StringVar()
         self.output_dir_var = tk.StringVar(value=str(Path.cwd()))
         self.base_filename_var = tk.StringVar(value="battery_curve")
+        self.backend_var = tk.StringVar(value=DEFAULT_PLOT_BACKEND)
         self.output_format_var = tk.StringVar(value=DEFAULT_OUTPUT_FORMAT)
         self.title_var = tk.StringVar(value="Battery Charge-Discharge Curves")
         self.x_label_var = tk.StringVar(value="Specific Capacity (mAh/g)")
         self.y_label_var = tk.StringVar(value="Voltage (V)")
         self.dpi_var = tk.StringVar(value="300")
         self.theme_var = tk.StringVar(value=DEFAULT_THEME)
-        self.colormap_var = tk.StringVar(value="tab10")
+        self.colormap_var = tk.StringVar(value=DEFAULT_COLORMAP)
         self.legend_loc_var = tk.StringVar(value="best")
-        self.line_width_var = tk.StringVar(value="1.8")
+        self.line_width_var = tk.StringVar(value="2.2")
         self.figure_size_var = tk.StringVar(value="8,6")
         self.x_lim_var = tk.StringVar()
         self.y_lim_var = tk.StringVar()
@@ -99,13 +100,14 @@ class BatteryPlotterGUI:
         self.line_color_var = tk.StringVar(value="#1f77b4")
 
         self.show_legend_var = tk.BooleanVar(value=True)
-        self.grid_var = tk.BooleanVar(value=True)
+        self.grid_var = tk.BooleanVar(value=False)
         self.color_by_cycle_var = tk.BooleanVar(value=True)
         self.auto_sort_var = tk.BooleanVar(value=True)
         self.absolute_specific_capacity_var = tk.BooleanVar(value=True)
         self.show_after_save_var = tk.BooleanVar(value=False)
         self.transparent_background_var = tk.BooleanVar(value=False)
         self.use_demo_var = tk.BooleanVar(value=False)
+        self.save_origin_project_var = tk.BooleanVar(value=True)
 
         self.start_button: ttk.Button | None = None
         self.log_text: tk.Text | None = None
@@ -224,6 +226,16 @@ class BatteryPlotterGUI:
         ).grid(row=row, column=1, sticky="w", pady=6)
         row += 1
 
+        ttk.Label(frame, text="绘图后端：").grid(row=row, column=0, sticky="w", pady=6)
+        ttk.Combobox(
+            frame,
+            textvariable=self.backend_var,
+            values=("matplotlib", "origin"),
+            state="readonly",
+            width=12,
+        ).grid(row=row, column=1, sticky="w", pady=6)
+        row += 1
+
         self._add_entry_row(frame, row, "图标题：", self.title_var)
         row += 1
         self._add_entry_row(frame, row, "X 轴标题：", self.x_label_var)
@@ -256,6 +268,11 @@ class BatteryPlotterGUI:
         ttk.Checkbutton(option_frame, text="使用内置 Demo", variable=self.use_demo_var).grid(
             row=2, column=1, sticky="w", pady=(8, 0)
         )
+        ttk.Checkbutton(
+            option_frame,
+            text="保存 Origin 工程",
+            variable=self.save_origin_project_var,
+        ).grid(row=2, column=2, sticky="w", pady=(8, 0))
 
     def _build_advanced_tab(self, frame: ttk.Frame) -> None:
         for col in range(3):
@@ -433,14 +450,15 @@ class BatteryPlotterGUI:
         self.sheet_name_var.set("")
         self.cycles_var.set("")
         self.output_format_var.set(DEFAULT_OUTPUT_FORMAT)
+        self.backend_var.set(DEFAULT_PLOT_BACKEND)
         self.title_var.set("Battery Charge-Discharge Curves")
         self.x_label_var.set("Specific Capacity (mAh/g)")
         self.y_label_var.set("Voltage (V)")
         self.dpi_var.set("300")
         self.theme_var.set(DEFAULT_THEME)
-        self.colormap_var.set("tab10")
+        self.colormap_var.set(DEFAULT_COLORMAP)
         self.legend_loc_var.set("best")
-        self.line_width_var.set("1.8")
+        self.line_width_var.set("2.2")
         self.figure_size_var.set("8,6")
         self.x_lim_var.set("")
         self.y_lim_var.set("")
@@ -448,13 +466,14 @@ class BatteryPlotterGUI:
         self.mode_map_var.set("")
         self.line_color_var.set("#1f77b4")
         self.show_legend_var.set(True)
-        self.grid_var.set(True)
+        self.grid_var.set(False)
         self.color_by_cycle_var.set(True)
         self.auto_sort_var.set(True)
         self.absolute_specific_capacity_var.set(True)
         self.show_after_save_var.set(False)
         self.transparent_background_var.set(False)
         self.use_demo_var.set(False)
+        self.save_origin_project_var.set(True)
 
     def build_config(self) -> tuple[AppConfig, bool]:
         config = AppConfig()
@@ -478,6 +497,7 @@ class BatteryPlotterGUI:
         output_target = Path(output_dir_text) / f"{base_filename}.{output_format}"
         config.output_path = build_output_path(str(output_target), output_format)
         config.output_format = output_format
+        config.plot_backend = (self.backend_var.get().strip() or DEFAULT_PLOT_BACKEND).lower()
 
         cycles_text = self.cycles_var.get().strip()
         config.cycles = parse_cycle_expression(cycles_text) if cycles_text else None
@@ -509,6 +529,7 @@ class BatteryPlotterGUI:
         config.absolute_specific_capacity = self.absolute_specific_capacity_var.get()
         config.show_after_save = self.show_after_save_var.get()
         config.transparent_background = self.transparent_background_var.get()
+        config.save_origin_project = self.save_origin_project_var.get()
         sync_output_settings(config)
         return config, use_demo
 
