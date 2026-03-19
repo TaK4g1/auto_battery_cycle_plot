@@ -23,6 +23,12 @@
   - 图例更紧凑
   - 线条更清晰
   - 更接近常见高水平电池文章的基本风格
+- 支持按需选择多种常见电化学图型：
+  - `voltage_capacity`：GCD 充放电曲线
+  - `long_cycling`：长循环性能 / 库仑效率
+  - `rate_capability`：倍率性能
+  - `dqdv`：dQ/dV 微分容量曲线
+  - `dvdq`：dV/dQ 微分电压曲线
 
 ---
 
@@ -254,6 +260,18 @@ GUI 中可以完成：
 python main.py --input "D:\data\cell.xlsx" --output "D:\figures\curve.png"
 ```
 
+### 选择绘图类型
+
+```powershell
+python main.py --input "D:\data\cell.xlsx" --output "D:\figures\curve.png" --plot-types voltage_capacity long_cycling dqdv
+```
+
+全部常用图一起输出：
+
+```powershell
+python main.py --input "D:\data\cell.xlsx" --output "D:\figures\curve.png" --plot-types all
+```
+
 ### 指定循环
 
 ```powershell
@@ -291,6 +309,7 @@ python main.py --demo --output demo.png
 - `--input`：输入 Excel
 - `--sheet`：指定 sheet
 - `--output`：输出图片路径
+- `--plot-types`：选择图型，可多选
 - `--backend`：`matplotlib` / `origin`
 - `--cycles`：循环范围
 - `--dpi`：输出 DPI
@@ -304,6 +323,20 @@ python main.py --demo --output demo.png
 - `--grid` / `--no-grid`
 - `--color-by-cycle` / `--no-color-by-cycle`
 - `--save-origin-project`
+
+### 当前支持的图型
+
+- `voltage_capacity`：Voltage vs Specific Capacity
+- `long_cycling`：Charge / Discharge Capacity vs Cycle + Coulombic Efficiency
+- `rate_capability`：Specific Capacity vs Cycle + Current Density
+- `dqdv`：dQ/dV vs Voltage
+- `dvdq`：dV/dQ vs Specific Capacity
+
+说明：
+
+- `long_cycling` 与 `rate_capability` 依赖循环汇总信息
+- `dqdv` / `dvdq` 优先使用原表已有微分列；没有时会根据原始曲线自动估算
+- 更常见的 `CV`、`Nyquist/EIS` 也属于电池文章高频图型，但通常需要**另一类实验数据文件**，当前这套 cycling Excel 不能稳定直接生成
 
 ---
 

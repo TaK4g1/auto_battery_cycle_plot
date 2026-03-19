@@ -156,6 +156,42 @@ sheet名_part2.png
 
 ---
 
+## 7.1 现在可以选哪些图？
+
+当前已经支持下面几类常见图：
+
+- `voltage_capacity`：最常用的 GCD 充放电曲线
+- `long_cycling`：长循环图（容量 + 库仑效率）
+- `rate_capability`：倍率性能图
+- `dqdv`：dQ/dV 曲线
+- `dvdq`：dV/dQ 曲线
+
+如果你用 GUI：
+
+- 直接在主界面的 **Plot Types** 区域勾选即可
+
+如果你用命令行：
+
+```powershell
+python main.py --input "D:\data\cell.xlsx" --output "D:\figures\curve.png" --plot-types voltage_capacity long_cycling dqdv
+```
+
+如果想一次性全部输出：
+
+```powershell
+python main.py --input "D:\data\cell.xlsx" --output "D:\figures\curve.png" --plot-types all
+```
+
+程序会自动在文件名后面加后缀，例如：
+
+- `_gcd`
+- `_cycling`
+- `_rate`
+- `_dqdv`
+- `_dvdq`
+
+---
+
 ## 8. colormap 和统一颜色是什么意思？
 
 这两个最容易混淆。
@@ -413,4 +449,3 @@ python gui.py
 ```
 
 然后把 Excel 选进去，输出路径设好，直接跑。
-

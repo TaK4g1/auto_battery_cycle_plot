@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from plot_catalog import DEFAULT_PLOT_TYPE
+
 SUPPORTED_EXCEL_SUFFIXES = {".xlsx", ".xlsm"}
 SCAN_PREVIEW_ROWS = 80
 DEFAULT_OUTPUT_FORMAT = "png"
@@ -58,6 +60,7 @@ class AppConfig:
     plot_backend: str = DEFAULT_PLOT_BACKEND
     save_origin_project: bool = True
     output_format: str = DEFAULT_OUTPUT_FORMAT
+    plot_types: list[str] = field(default_factory=lambda: [DEFAULT_PLOT_TYPE])
     dpi: int = 300
     cycles: list[int] | None = None
     show_legend: bool = True

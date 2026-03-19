@@ -7,7 +7,8 @@ from pathlib import Path
 
 from config import AppConfig, DEFAULT_PLOT_BACKEND
 from data_loader import DataLoaderError, generate_demo_dataset, load_battery_datasets
-from plotter import PlottingError, plot_voltage_specific_capacity
+from plot_catalog import parse_plot_types, plot_type_label, plot_type_suffix
+from plotter import PlottingError, plot_dataset_by_type
 from utils import (
     UserInputError,
     build_output_path,
@@ -34,6 +35,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input", help="输入 Excel 文件路径（.xlsx / .xlsm）")
     parser.add_argument("--sheet", help="要读取的 sheet 名")
     parser.add_argument("--output", help="输出图片路径")
+    parser.add_argument("--plot-types", nargs="*", help="绘图类型，可多选：voltage_capacity long_cycling rate_capability dqdv dvdq / all")
     parser.add_argument(
         "--backend",
         choices=["matplotlib", "origin"],
@@ -109,6 +111,8 @@ def apply_cli_arguments(args: argparse.Namespace) -> AppConfig:
 
     if args.input:
         config.input_path = validate_input_file(args.input)
+    if args.plot_types is not None:
+        config.plot_types = parse_plot_types(args.plot_types)
     if args.backend:
         config.plot_backend = parse_plot_backend(args.backend, config.plot_backend)
     if args.save_origin_project is not None:
@@ -219,6 +223,13 @@ def configure_interactively(config: AppConfig, prompt_all: bool, use_demo: bool)
         config.output_path = prompt_output_file(config, "请输入输出图片保存路径")
         if config.output_path.suffix:
             config.output_format = config.output_path.suffix.lstrip(".").lower()
+
+    if prompt_all or not config.plot_types:
+        plot_type_default = ",".join(config.plot_types) if config.plot_types else "voltage_capacity"
+        config.plot_types = prompt_until_valid(
+            f"请输入绘图类型（可多选，逗号分隔；如 voltage_capacity,long_cycling；all 表示全部） [{plot_type_default}]: ",
+            lambda text: parse_plot_types(text if text.strip() else plot_type_default),
+        )
 
     if prompt_all or config.cycles is None:
         cycles_default = ",".join(str(item) for item in config.cycles) if config.cycles else ""
@@ -361,14 +372,20 @@ def build_dataset_output_path(config: AppConfig, output_stem: str, total_count: 
     return config.output_path.parent / f"{output_stem}{suffix}"
 
 
-def plot_dataset(data, config: AppConfig) -> Path:
+def build_plot_output_path(base_output_path: Path, plot_type: str, total_plot_types: int) -> Path:
+    if total_plot_types <= 1:
+        return base_output_path
+    return base_output_path.with_name(f"{base_output_path.stem}_{plot_type_suffix(plot_type)}{base_output_path.suffix}")
+
+
+def plot_dataset(data, config: AppConfig, plot_type: str, *, total_plot_types: int) -> Path:
     backend = (config.plot_backend or DEFAULT_PLOT_BACKEND).lower()
     if backend == "matplotlib":
-        return plot_voltage_specific_capacity(data, config)
+        return plot_dataset_by_type(data, config, plot_type, total_plot_types=total_plot_types)
     if backend == "origin":
-        from origin_plotter import plot_voltage_specific_capacity_origin
+        from origin_plotter import plot_dataset_by_type_origin
 
-        return plot_voltage_specific_capacity_origin(data, config)
+        return plot_dataset_by_type_origin(data, config, plot_type, total_plot_types=total_plot_types)
     raise PlottingError(f"不支持的绘图后端: {config.plot_backend}")
 
 
@@ -377,8 +394,14 @@ def run(config: AppConfig, use_demo: bool) -> list[Path]:
         dataset = generate_demo_dataset()
         print("已加载内置示例数据。")
         print(f"当前绘图后端: {config.plot_backend}")
-        saved_path = plot_dataset(dataset.data, config)
-        return [saved_path]
+        saved_paths: list[Path] = []
+        total_plot_types = len(config.plot_types or [])
+        for plot_type in config.plot_types:
+            plot_output_path = build_plot_output_path(config.output_path, plot_type, total_plot_types)
+            plot_config = replace(config, output_path=plot_output_path)
+            print(f"绘图类型: {plot_type_label(plot_type)}")
+            saved_paths.append(plot_dataset(dataset.data, plot_config, plot_type, total_plot_types=total_plot_types))
+        return saved_paths
 
     if config.input_path is None:
         raise UserInputError("缺少输入文件路径。")
@@ -394,6 +417,7 @@ def run(config: AppConfig, use_demo: bool) -> list[Path]:
 
     saved_paths: list[Path] = []
     total_count = len(dataset_items)
+    total_plot_types = len(config.plot_types or [])
     print(f"当前绘图后端: {config.plot_backend}")
     if total_count > 1:
         print(f"检测到 {total_count} 个可绘制子表格，开始依次输出。")
@@ -411,8 +435,11 @@ def run(config: AppConfig, use_demo: bool) -> list[Path]:
         print(f"已识别表头行: 第 {dataset.header_row + 1} 行")
         if item.source_path:
             print(f"匹配源子表: {item.source_path}")
-
-        saved_paths.append(plot_dataset(dataset.data, dataset_config))
+        for plot_type in config.plot_types:
+            plot_output_path = build_plot_output_path(dataset_output_path, plot_type, total_plot_types)
+            plot_config = replace(dataset_config, output_path=plot_output_path)
+            print(f"绘图类型: {plot_type_label(plot_type)}")
+            saved_paths.append(plot_dataset(dataset.data, plot_config, plot_type, total_plot_types=total_plot_types))
 
     return saved_paths
 

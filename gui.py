@@ -13,6 +13,7 @@ from matplotlib import colormaps
 from config import AppConfig, DEFAULT_COLORMAP, DEFAULT_OUTPUT_FORMAT, DEFAULT_PLOT_BACKEND, DEFAULT_THEME
 from data_loader import DataLoaderError
 from main import run, sync_output_settings
+from plot_catalog import DEFAULT_PLOT_TYPE, available_plot_type_labels
 from plotter import PlottingError
 from utils import (
     UserInputError,
@@ -98,6 +99,9 @@ class BatteryPlotterGUI:
         self.font_family_var = tk.StringVar(value="Microsoft YaHei,SimHei,DejaVu Sans")
         self.mode_map_var = tk.StringVar()
         self.line_color_var = tk.StringVar(value="#1f77b4")
+        self.plot_type_vars = {
+            key: tk.BooleanVar(value=(key == DEFAULT_PLOT_TYPE)) for key, _ in available_plot_type_labels()
+        }
 
         self.show_legend_var = tk.BooleanVar(value=True)
         self.grid_var = tk.BooleanVar(value=False)
@@ -234,6 +238,18 @@ class BatteryPlotterGUI:
             state="readonly",
             width=12,
         ).grid(row=row, column=1, sticky="w", pady=6)
+        row += 1
+
+        plot_type_frame = ttk.LabelFrame(frame, text="Plot Types", padding=10)
+        plot_type_frame.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        for col in range(2):
+            plot_type_frame.columnconfigure(col, weight=1)
+        for index, (plot_type, label) in enumerate(available_plot_type_labels()):
+            ttk.Checkbutton(
+                plot_type_frame,
+                text=label,
+                variable=self.plot_type_vars[plot_type],
+            ).grid(row=index // 2, column=index % 2, sticky="w", padx=(0, 10), pady=2)
         row += 1
 
         self._add_entry_row(frame, row, "图标题：", self.title_var)
@@ -451,6 +467,8 @@ class BatteryPlotterGUI:
         self.cycles_var.set("")
         self.output_format_var.set(DEFAULT_OUTPUT_FORMAT)
         self.backend_var.set(DEFAULT_PLOT_BACKEND)
+        for key, var in self.plot_type_vars.items():
+            var.set(key == DEFAULT_PLOT_TYPE)
         self.title_var.set("Battery Charge-Discharge Curves")
         self.x_label_var.set("Specific Capacity (mAh/g)")
         self.y_label_var.set("Voltage (V)")
@@ -498,6 +516,9 @@ class BatteryPlotterGUI:
         config.output_path = build_output_path(str(output_target), output_format)
         config.output_format = output_format
         config.plot_backend = (self.backend_var.get().strip() or DEFAULT_PLOT_BACKEND).lower()
+        config.plot_types = [key for key, var in self.plot_type_vars.items() if var.get()]
+        if not config.plot_types:
+            raise UserInputError("请至少选择一种绘图类型。")
 
         cycles_text = self.cycles_var.get().strip()
         config.cycles = parse_cycle_expression(cycles_text) if cycles_text else None
