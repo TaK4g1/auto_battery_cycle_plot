@@ -307,7 +307,17 @@ def _merge_parsed_dataset_group(group: list[tuple[_DetectedBlock, ParsedDataset]
     if len(group) == 1:
         return first_block, first_dataset
 
-    merged_data = pd.concat([dataset.data for _, dataset in group], ignore_index=True)
+    merged_frames: list[pd.DataFrame] = []
+    row_order_offset = 0
+    for _, dataset in group:
+        frame = dataset.data.copy()
+        if "_row_order" in frame.columns:
+            row_order = pd.to_numeric(frame["_row_order"], errors="coerce").fillna(0).astype(int)
+            frame["_row_order"] = row_order + row_order_offset
+            row_order_offset = int(frame["_row_order"].max()) + 1
+        merged_frames.append(frame)
+
+    merged_data = pd.concat(merged_frames, ignore_index=True)
     merged_dataset = ParsedDataset(
         data=merged_data,
         sheet_name=first_dataset.sheet_name,
@@ -335,6 +345,50 @@ def _collapse_parsed_items_to_expected_count(
         start += chunk_size
 
     return [_merge_parsed_dataset_group(group) for group in grouped_items if group]
+
+
+def _collapse_parsed_items_by_sheet(
+    parsed_items: list[tuple[_DetectedBlock, ParsedDataset]],
+) -> list[tuple[_DetectedBlock, ParsedDataset]]:
+    grouped_items: list[list[tuple[_DetectedBlock, ParsedDataset]]] = []
+    current_group: list[tuple[_DetectedBlock, ParsedDataset]] = []
+    current_sheet: str | None = None
+
+    for item in parsed_items:
+        block, dataset = item
+        sheet_name = dataset.sheet_name
+        if current_group and sheet_name != current_sheet:
+            grouped_items.append(current_group)
+            current_group = []
+        current_group.append((block, dataset))
+        current_sheet = sheet_name
+
+    if current_group:
+        grouped_items.append(current_group)
+
+    return [_merge_parsed_dataset_group(group) for group in grouped_items if group]
+
+
+def _should_collapse_single_metadata_record(parsed_items: list[tuple[_DetectedBlock, ParsedDataset]]) -> bool:
+    if len(parsed_items) <= 1:
+        return True
+
+    cycle_sets: list[set[int]] = []
+    for _, dataset in parsed_items:
+        if dataset.data.empty or "cycle" not in dataset.data.columns:
+            continue
+        cycle_set = set(dataset.data["cycle"].dropna().astype(int).tolist())
+        if not cycle_set:
+            continue
+        cycle_sets.append(cycle_set)
+
+    if len(cycle_sets) <= 1:
+        return True
+    if any(len(cycle_set) > 1 for cycle_set in cycle_sets):
+        return False
+
+    flattened_cycles = [next(iter(cycle_set)) for cycle_set in cycle_sets]
+    return len(set(flattened_cycles)) < len(flattened_cycles)
 
 
 def _deduplicate_output_stems(items: list[DatasetLoadItem]) -> list[DatasetLoadItem]:
@@ -393,7 +447,7 @@ def load_battery_datasets(
     parsed_items: list[tuple[_DetectedBlock, ParsedDataset]] = []
     last_parse_error: DataParsingError | None = None
 
-    for block in detected_blocks:
+    for global_block_index, block in enumerate(detected_blocks):
         detection = block.detection
         try:
             dataset = clean_dataset(
@@ -412,6 +466,7 @@ def load_battery_datasets(
             last_parse_error = exc
             continue
 
+        dataset.data["_segment_id"] = global_block_index
         parsed_items.append((block, dataset))
 
     if not parsed_items:
@@ -421,7 +476,14 @@ def load_battery_datasets(
 
     metadata_rows = _read_source_metadata(file_path, excel_file)
     if metadata_rows:
-        parsed_items = _collapse_parsed_items_to_expected_count(parsed_items, len(metadata_rows))
+        parsed_sheet_names = [dataset.sheet_name for _, dataset in parsed_items]
+        unique_sheet_names = list(dict.fromkeys(parsed_sheet_names))
+        if len(metadata_rows) == len(unique_sheet_names) and len(unique_sheet_names) > 0:
+            parsed_items = _collapse_parsed_items_by_sheet(parsed_items)
+        elif len(metadata_rows) > 1:
+            parsed_items = _collapse_parsed_items_to_expected_count(parsed_items, len(metadata_rows))
+        elif _should_collapse_single_metadata_record(parsed_items):
+            parsed_items = _collapse_parsed_items_to_expected_count(parsed_items, 1)
     used_metadata_indices: set[int] = set()
     loaded_items: list[DatasetLoadItem] = []
 

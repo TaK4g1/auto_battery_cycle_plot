@@ -406,6 +406,7 @@ def run(config: AppConfig, use_demo: bool) -> list[Path]:
     if config.input_path is None:
         raise UserInputError("缺少输入文件路径。")
 
+    print(f"输入文件: {config.input_path}")
     dataset_items = load_battery_datasets(
         file_path=config.input_path,
         sheet_name=config.sheet_name,

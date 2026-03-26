@@ -8,6 +8,7 @@ import pandas as pd
 
 
 DEFAULT_PLOT_TYPE = "voltage_capacity"
+SEGMENT_ID_COLUMN = "_segment_id"
 
 
 PLOT_TYPE_REGISTRY: dict[str, dict[str, str]] = {
@@ -168,6 +169,13 @@ def compute_active_mass_g(data: pd.DataFrame) -> float | None:
     return float(ratio.median())
 
 
+def sort_curve_points(data: pd.DataFrame) -> pd.DataFrame:
+    sort_columns = [column for column in ["record", "_row_order", "specific_capacity", "voltage"] if column in data.columns]
+    if not sort_columns:
+        return data.copy()
+    return data.sort_values(sort_columns, kind="mergesort").copy()
+
+
 def build_cycle_summary(data: pd.DataFrame) -> pd.DataFrame:
     working = data.copy()
     aggregations: dict[str, tuple[str, str]] = {
@@ -257,8 +265,7 @@ def build_differential_dataset(data: pd.DataFrame, plot_type: str) -> pd.DataFra
     result_rows: list[pd.DataFrame] = []
 
     for (cycle, curve_type), segment in data.groupby(["cycle", "curve_type"], sort=True):
-        sort_columns = [column for column in ["specific_capacity", "record", "_row_order"] if column in segment.columns]
-        ordered = segment.sort_values(sort_columns, kind="mergesort").copy()
+        ordered = sort_curve_points(segment)
         if len(ordered.index) < 5:
             continue
 

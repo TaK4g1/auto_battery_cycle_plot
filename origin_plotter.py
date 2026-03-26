@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from config import AppConfig
-from plot_catalog import build_cycle_summary, build_differential_dataset, resolve_plot_text
+from plot_catalog import build_cycle_summary, build_differential_dataset, resolve_plot_text, sort_curve_points
 from plotter import MODE_LABELS, PlottingError, SUMMARY_COLORS
 
 try:
@@ -288,12 +288,12 @@ def plot_voltage_specific_capacity_origin(data: pd.DataFrame, config: AppConfig,
             cycle_df = data[data["cycle"] == cycle]
             cycle_segment_count = 0
             for curve_type in ["charge", "discharge"]:
-                segment = cycle_df[cycle_df["curve_type"] == curve_type]
-                if segment.empty:
+                curve_df = cycle_df[cycle_df["curve_type"] == curve_type]
+                if curve_df.empty:
                     continue
-
-                x_values = segment["specific_capacity"].astype(float).tolist()
-                y_values = segment["voltage"].astype(float).tolist()
+                ordered = sort_curve_points(curve_df)
+                x_values = ordered["specific_capacity"].astype(float).tolist()
+                y_values = ordered["voltage"].astype(float).tolist()
                 label = f"Cycle {cycle} - {MODE_LABELS[curve_type]}"
                 plot_wks.from_list(next_col, x_values, lname=f"X_{cycle}_{curve_type}")
                 plot_wks.from_list(next_col + 1, y_values, lname=label)
@@ -364,12 +364,15 @@ def _plot_differential_origin(data: pd.DataFrame, config: AppConfig, plot_type: 
         for cycle in cycles:
             cycle_df = differential[differential["cycle"] == cycle]
             for curve_type in ["charge", "discharge"]:
-                segment = cycle_df[cycle_df["curve_type"] == curve_type]
-                if segment.empty:
+                curve_df = cycle_df[cycle_df["curve_type"] == curve_type]
+                if curve_df.empty:
                     continue
+                ordered = sort_curve_points(curve_df.rename(columns={"x": "specific_capacity", "y": "voltage"})).rename(
+                    columns={"specific_capacity": "x", "voltage": "y"}
+                )
                 label = f"Cycle {cycle} - {MODE_LABELS[curve_type]}"
-                plot_wks.from_list(next_col, segment["x"].astype(float).tolist(), lname=f"X_{cycle}_{curve_type}")
-                plot_wks.from_list(next_col + 1, segment["y"].astype(float).tolist(), lname=label)
+                plot_wks.from_list(next_col, ordered["x"].astype(float).tolist(), lname=f"X_{cycle}_{curve_type}")
+                plot_wks.from_list(next_col + 1, ordered["y"].astype(float).tolist(), lname=label)
                 plot = layer.add_plot(plot_wks, coly=next_col + 1, colx=next_col, type="l")
                 line_style = config.line_style_charge if curve_type == "charge" else config.line_style_discharge
                 _apply_plot_style(plot, config, colors.get(cycle, config.line_color), line_style)

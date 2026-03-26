@@ -8,7 +8,7 @@ import pandas as pd
 from matplotlib.lines import Line2D
 
 from config import AppConfig
-from plot_catalog import build_cycle_summary, build_differential_dataset, resolve_plot_text
+from plot_catalog import build_cycle_summary, build_differential_dataset, resolve_plot_text, sort_curve_points
 
 
 class PlottingError(RuntimeError):
@@ -197,13 +197,14 @@ def plot_voltage_specific_capacity(data: pd.DataFrame, config: AppConfig, *, tot
     for cycle in cycles:
         cycle_df = data[data["cycle"] == cycle]
         for curve_type in ["charge", "discharge"]:
-            segment = cycle_df[cycle_df["curve_type"] == curve_type]
-            if segment.empty:
+            curve_df = cycle_df[cycle_df["curve_type"] == curve_type]
+            if curve_df.empty:
                 continue
             line_style = config.line_style_charge if curve_type == "charge" else config.line_style_discharge
+            ordered = sort_curve_points(curve_df)
             ax.plot(
-                segment["specific_capacity"],
-                segment["voltage"],
+                ordered["specific_capacity"],
+                ordered["voltage"],
                 color=colors.get(cycle, config.line_color),
                 linewidth=config.line_width,
                 linestyle=line_style,
@@ -249,13 +250,16 @@ def _plot_differential(data: pd.DataFrame, config: AppConfig, plot_type: str, *,
     for cycle in cycles:
         cycle_df = differential[differential["cycle"] == cycle]
         for curve_type in ["charge", "discharge"]:
-            segment = cycle_df[cycle_df["curve_type"] == curve_type]
-            if segment.empty:
+            curve_df = cycle_df[cycle_df["curve_type"] == curve_type]
+            if curve_df.empty:
                 continue
             line_style = config.line_style_charge if curve_type == "charge" else config.line_style_discharge
+            ordered = sort_curve_points(curve_df.rename(columns={"x": "specific_capacity", "y": "voltage"})).rename(
+                columns={"specific_capacity": "x", "voltage": "y"}
+            )
             ax.plot(
-                segment["x"],
-                segment["y"],
+                ordered["x"],
+                ordered["y"],
                 color=colors.get(cycle, config.line_color),
                 linewidth=config.line_width,
                 linestyle=line_style,

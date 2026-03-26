@@ -564,6 +564,12 @@ class BatteryPlotterGUI:
         if self.start_button is not None:
             self.start_button.configure(state="disabled")
         self.append_log("\n=== 开始执行 ===\n")
+        if use_demo:
+            self.append_log("输入数据：内置 Demo\n")
+        else:
+            self.append_log(f"输入文件：{config.input_path}\n")
+        self.append_log(f"输出路径：{config.output_path}\n")
+        self.append_log(f"绘图后端：{config.plot_backend}\n")
 
         worker = threading.Thread(
             target=self._run_worker,
